@@ -54,23 +54,16 @@ class LoginView(APIView):
         Validate login credentials and return token.
 
         Returns:
-            200: Authentication successful
-            400: Missing or invalid credentials
+            Response: Auth token + user data or error message
         """
 
         email = request.data.get("email")
         password = request.data.get("password")
 
-        # ✅ Edge case validation (WICHTIG für PM-Tests)
-        if not email:
+        # ✅ unified validation (PM-friendly)
+        if not email or not password:
             return Response(
-                {"email": "This field is required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not password:
-            return Response(
-                {"password": "This field is required."},
+                {"error": "Email and password are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
