@@ -1,16 +1,56 @@
 from rest_framework import serializers
+
 from auth_app.models import User
-from kanban_app.models import Board
+from kanban_app.models import Board, Task
+
+
+class UserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "fullname",
+        ]
+
+
+class TaskPreviewSerializer(serializers.ModelSerializer):
+
+    assignee = UserSerializer(read_only=True)
+    reviewer = UserSerializer(read_only=True)
+
+    comments_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = [
+            "id",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assignee",
+            "reviewer",
+            "due_date",
+            "comments_count",
+        ]
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
 
 
 class BoardListSerializer(serializers.ModelSerializer):
 
     member_count = serializers.SerializerMethodField()
-    task_count = serializers.SerializerMethodField()
+    ticket_count = serializers.SerializerMethodField()
     tasks_to_do_count = serializers.SerializerMethodField()
     tasks_high_prio_count = serializers.SerializerMethodField()
 
-    owner_id = serializers.IntegerField(source="owner.id", read_only=True)
+    owner_id = serializers.IntegerField(
+        source="owner.id",
+        read_only=True
+    )
 
     class Meta:
         model = Board
@@ -19,7 +59,7 @@ class BoardListSerializer(serializers.ModelSerializer):
             "title",
             "owner_id",
             "member_count",
-            "task_count",
+            "ticket_count",
             "tasks_to_do_count",
             "tasks_high_prio_count",
         ]
@@ -27,7 +67,7 @@ class BoardListSerializer(serializers.ModelSerializer):
     def get_member_count(self, obj):
         return obj.members.count()
 
-    def get_task_count(self, obj):
+    def get_ticket_count(self, obj):
         return obj.tasks.count()
 
     def get_tasks_to_do_count(self, obj):
@@ -47,24 +87,96 @@ class BoardDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Board
-        fields = ["title", "members"]
+        fields = [
+            "title",
+            "members",
+        ]
 
     def create(self, validated_data):
         members = validated_data.pop("members", [])
 
         request = self.context["request"]
 
-        # 🔥 OWNER MUSS HIER REIN
         board = Board.objects.create(
             owner=request.user,
             **validated_data
         )
 
-        # owner immer member
+        # Owner immer Mitglied
         board.members.add(request.user)
 
-        # zusätzliche members
+        # weitere Mitglieder
         if members:
             board.members.add(*members)
 
         return board
+
+    def update(self, instance, validated_data):
+        members = validated_data.pop("members", None)
+
+        instance.title = validated_data.get(
+            "title",
+            instance.title
+        )
+
+        instance.save()
+
+        if members is not None:
+
+            # Owner darf niemals entfernt werden
+            if instance.owner not in members:
+                members.append(instance.owner)
+
+            instance.members.set(members)
+
+        return instance
+
+
+class BoardRetrieveSerializer(serializers.ModelSerializer):
+
+    owner_id = serializers.IntegerField(
+        source="owner.id",
+        read_only=True
+    )
+
+    members = UserSerializer(
+        many=True,
+        read_only=True
+    )
+
+    tasks = TaskPreviewSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Board
+        fields = [
+            "id",
+            "title",
+            "owner_id",
+            "members",
+            "tasks",
+        ]
+
+class BoardUpdateResponseSerializer(serializers.ModelSerializer):
+
+    owner_data = UserSerializer(
+        source="owner",
+        read_only=True
+    )
+
+    members_data = UserSerializer(
+        source="members",
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Board
+        fields = [
+            "id",
+            "title",
+            "owner_data",
+            "members_data",
+        ]
