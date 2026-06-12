@@ -1,9 +1,13 @@
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .serializers import BoardUpdateResponseSerializer
-
+from django.contrib.auth import get_user_model
 from kanban_app.models import Board
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from rest_framework.views import APIView
+
 
 from kanban_app.api.serializers import (
     BoardListSerializer,
@@ -15,6 +19,13 @@ from kanban_app.api.permissions import (
     IsBoardMemberOrOwner,
     IsBoardOwner,
 )
+
+from kanban_app.api.serializers import (
+    EmailCheckSerializer,
+)
+
+
+User = get_user_model()
 
 
 class BoardListView(generics.ListCreateAPIView):
@@ -103,4 +114,98 @@ class BoardDetailView(generics.RetrieveUpdateDestroyAPIView):
             BoardUpdateResponseSerializer(
                 serializer.instance
             ).data
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+
+class EmailCheckView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        email = request.query_params.get("email")
+
+        if not email:
+            return Response(
+                {"error": "Email is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            return Response(
+                {"detail": "Email not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response({
+            "id": user.id,
+            "email": user.email,
+            "fullname": user.fullname
+        })
+
+
+class EmailCheckView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get(self, request):
+        email = request.query_params.get(
+            "email"
+        )
+
+        if not email:
+            return Response(
+                {
+                    "error": (
+                        "Email is required."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            validate_email(email)
+
+        except ValidationError:
+            return Response(
+                {
+                    "error": (
+                        "Invalid email format."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(
+                email=email
+            )
+
+        except User.DoesNotExist:
+            return Response(
+                {
+                    "error": (
+                        "Email not found."
+                    )
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = EmailCheckSerializer(
+            user
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
         )

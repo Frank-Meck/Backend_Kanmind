@@ -159,6 +159,7 @@ class BoardRetrieveSerializer(serializers.ModelSerializer):
             "tasks",
         ]
 
+
 class BoardUpdateResponseSerializer(serializers.ModelSerializer):
 
     owner_data = UserSerializer(
@@ -179,4 +180,15 @@ class BoardUpdateResponseSerializer(serializers.ModelSerializer):
             "title",
             "owner_data",
             "members_data",
+        ]
+
+class EmailCheckSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "fullname",
         ]
