@@ -1,12 +1,12 @@
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .serializers import BoardUpdateResponseSerializer
+from .serializers import BoardUpdateResponseSerializer, TaskCreateSerializer, TaskSerializer
 from django.contrib.auth import get_user_model
-from kanban_app.models import Board
+from kanban_app.models import Board, Task
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-from rest_framework.views import APIView
+from rest_framework.views import APIView, PermissionDenied
 
 
 from kanban_app.api.serializers import (
@@ -18,6 +18,8 @@ from kanban_app.api.serializers import (
 from kanban_app.api.permissions import (
     IsBoardMemberOrOwner,
     IsBoardOwner,
+    IsTaskBoardMember,
+    IsTaskCreatorOrBoardOwner,
 )
 
 from kanban_app.api.serializers import (
@@ -125,33 +127,6 @@ class BoardDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 
-class EmailCheckView(generics.GenericAPIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        email = request.query_params.get("email")
-
-        if not email:
-            return Response(
-                {"error": "Email is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = User.objects.filter(email=email).first()
-
-        if not user:
-            return Response(
-                {"detail": "Email not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        return Response({
-            "id": user.id,
-            "email": user.email,
-            "fullname": user.fullname
-        })
-
-
 class EmailCheckView(APIView):
 
     permission_classes = [
@@ -209,3 +184,55 @@ class EmailCheckView(APIView):
             serializer.data,
             status=status.HTTP_200_OK,
         )
+
+
+class TaskCreateView(generics.CreateAPIView):
+    serializer_class = TaskCreateSerializer
+    permission_classes = [IsAuthenticated, IsBoardMemberOrOwner]
+
+    def perform_create(self, serializer):
+        board = serializer.validated_data["board"]
+
+        if not board.members.filter(id=self.request.user.id).exists():
+            raise PermissionDenied("Not a board member")
+
+        serializer.save()
+
+
+class AssignedToMeView(generics.ListAPIView):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Task.objects.filter(
+            assignee=self.request.user
+        )
+
+
+class ReviewingView(generics.ListAPIView):
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Task.objects.filter(
+            reviewer=self.request.user
+        )
+
+
+class TaskDetailView(
+    generics.RetrieveUpdateDestroyAPIView
+):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            return [
+                IsAuthenticated(),
+                IsTaskCreatorOrBoardOwner(),
+            ]
+
+        return [
+            IsAuthenticated(),
+            IsTaskBoardMember(),
+        ]

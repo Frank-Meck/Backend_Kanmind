@@ -182,6 +182,7 @@ class BoardUpdateResponseSerializer(serializers.ModelSerializer):
             "members_data",
         ]
 
+
 class EmailCheckSerializer(
     serializers.ModelSerializer
 ):
@@ -192,3 +193,71 @@ class EmailCheckSerializer(
             "email",
             "fullname",
         ]
+
+
+class TaskCreateSerializer(serializers.ModelSerializer):
+    assignee_id = serializers.IntegerField(required=False, allow_null=True)
+    reviewer_id = serializers.IntegerField(required=False, allow_null=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            "board",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assignee_id",
+            "reviewer_id",
+            "due_date",
+        ]
+
+    def create(self, validated_data):
+        assignee_id = validated_data.pop("assignee_id", None)
+        reviewer_id = validated_data.pop("reviewer_id", None)
+
+        request = self.context["request"]
+
+        task = Task.objects.create(
+            creator=request.user,
+            **validated_data
+        )
+
+        if assignee_id:
+            task.assignee_id = assignee_id
+        if reviewer_id:
+            task.reviewer_id = reviewer_id
+
+        task.save()
+        return task
+
+
+class TaskSerializer(serializers.ModelSerializer):
+
+    assignee = UserSerializer(
+        read_only=True
+    )
+
+    reviewer = UserSerializer(
+        read_only=True
+    )
+
+    comments_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = [
+            "id",
+            "board",
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assignee",
+            "reviewer",
+            "due_date",
+            "comments_count",
+        ]
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
