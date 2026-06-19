@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from auth_app.models import User
-from kanban_app.models import Board, Task
+from kanban_app.models import Board, Task, Comment
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -196,8 +196,15 @@ class EmailCheckSerializer(
 
 
 class TaskCreateSerializer(serializers.ModelSerializer):
-    assignee_id = serializers.IntegerField(required=False, allow_null=True)
-    reviewer_id = serializers.IntegerField(required=False, allow_null=True)
+    assignee_id = serializers.IntegerField(
+        required=False,
+        allow_null=True
+    )
+
+    reviewer_id = serializers.IntegerField(
+        required=False,
+        allow_null=True
+    )
 
     class Meta:
         model = Task
@@ -212,24 +219,102 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             "due_date",
         ]
 
-    def create(self, validated_data):
-        assignee_id = validated_data.pop("assignee_id", None)
-        reviewer_id = validated_data.pop("reviewer_id", None)
-
+    def validate_board(self, board):
         request = self.context["request"]
 
-        task = Task.objects.create(
-            creator=request.user,
-            **validated_data
+        if not board.members.filter(
+            id=request.user.id
+        ).exists():
+            raise serializers.ValidationError(
+                "You are not a member of this board."
+            )
+
+        return board
+
+    def validate(self, attrs):
+        board = attrs["board"]
+
+        assignee_id = attrs.get("assignee_id")
+        reviewer_id = attrs.get("reviewer_id")
+
+        if assignee_id is not None:
+            if not board.members.filter(
+                id=assignee_id
+            ).exists():
+                raise serializers.ValidationError(
+                    {
+                        "assignee_id":
+                        "User must be board member."
+                    }
+                )
+
+        if reviewer_id is not None:
+            if not board.members.filter(
+                id=reviewer_id
+            ).exists():
+                raise serializers.ValidationError(
+                    {
+                        "reviewer_id":
+                        "User must be board member."
+                    }
+                )
+
+        return attrs
+
+    def create(self, validated_data):
+        assignee_id = validated_data.pop(
+            "assignee_id",
+            None,
         )
 
-        if assignee_id:
-            task.assignee_id = assignee_id
-        if reviewer_id:
-            task.reviewer_id = reviewer_id
+        reviewer_id = validated_data.pop(
+            "reviewer_id",
+            None,
+        )
 
-        task.save()
-        return task
+        assignee = None
+        reviewer = None
+
+        if assignee_id is not None:
+            assignee = User.objects.get(
+                id=assignee_id
+            )
+
+        if reviewer_id is not None:
+            reviewer = User.objects.get(
+                id=reviewer_id
+            )
+
+        return Task.objects.create(
+            assignee=assignee,
+            reviewer=reviewer,
+            **validated_data,
+        )
+
+class TaskWriteSerializer(
+    serializers.ModelSerializer
+):
+    assignee_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    reviewer_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = Task
+        fields = [
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assignee_id",
+            "reviewer_id",
+            "due_date",
+        ]
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -261,3 +346,140 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def get_comments_count(self, obj):
         return obj.comments.count()
+
+
+class TaskUpdateSerializer(serializers.ModelSerializer):
+    assignee_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    reviewer_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = Task
+        fields = [
+            "title",
+            "description",
+            "status",
+            "priority",
+            "assignee_id",
+            "reviewer_id",
+            "due_date",
+        ]
+
+    def validate(self, attrs):
+        board = self.instance.board
+
+        assignee_id = attrs.get("assignee_id")
+        reviewer_id = attrs.get("reviewer_id")
+
+        if assignee_id is not None:
+            if not board.members.filter(
+                id=assignee_id
+            ).exists():
+                raise serializers.ValidationError(
+                    {
+                        "assignee_id":
+                        "User must be board member."
+                    }
+                )
+
+        if reviewer_id is not None:
+            if not board.members.filter(
+                id=reviewer_id
+            ).exists():
+                raise serializers.ValidationError(
+                    {
+                        "reviewer_id":
+                        "User must be board member."
+                    }
+                )
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        has_assignee = (
+            "assignee_id" in validated_data
+        )
+
+        has_reviewer = (
+            "reviewer_id" in validated_data
+        )
+
+        assignee_id = validated_data.pop(
+            "assignee_id",
+            None,
+        )
+
+        reviewer_id = validated_data.pop(
+            "reviewer_id",
+            None,
+        )
+
+        for attr, value in validated_data.items():
+            setattr(
+                instance,
+                attr,
+                value,
+            )
+
+        if has_assignee:
+            instance.assignee_id = (
+                assignee_id
+            )
+
+        if has_reviewer:
+            instance.reviewer_id = (
+                reviewer_id
+            )
+
+        instance.save()
+
+        return instance
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.CharField(
+        source="author.fullname",
+        read_only=True
+    )
+
+    class Meta:
+        model = Comment
+        fields = [
+            "id",
+            "created_at",
+            "author",
+            "content",
+        ]
+
+
+class CommentCreateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Comment
+        fields = [
+            "content",
+        ]
+
+    def validate_content(self, value):
+        if not value.strip():
+            raise serializers.ValidationError(
+                "Content cannot be empty."
+            )
+
+        return value
+
+    def create(self, validated_data):
+        task = self.context["task"]
+        request = self.context["request"]
+
+        return Comment.objects.create(
+            task=task,
+            author=request.user,
+            **validated_data
+        )

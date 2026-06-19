@@ -1,9 +1,15 @@
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .serializers import BoardUpdateResponseSerializer, TaskCreateSerializer, TaskSerializer
+from .serializers import (
+    TaskSerializer,
+    TaskCreateSerializer,
+    TaskUpdateSerializer,
+)
+
 from django.contrib.auth import get_user_model
-from kanban_app.models import Board, Task
+from kanban_app.models import Board, Task, Comment
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from rest_framework.views import APIView, PermissionDenied
@@ -20,10 +26,15 @@ from kanban_app.api.permissions import (
     IsBoardOwner,
     IsTaskBoardMember,
     IsTaskCreatorOrBoardOwner,
+    IsCommentAuthor,
 )
 
 from kanban_app.api.serializers import (
     EmailCheckSerializer,
+    CommentSerializer,
+    CommentCreateSerializer,
+    BoardUpdateResponseSerializer,
+
 )
 
 
@@ -49,16 +60,17 @@ class BoardListView(generics.ListCreateAPIView):
             data=request.data
         )
 
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-
-        board = Board.objects.get(
-            id=serializer.instance.id
+        serializer.is_valid(
+            raise_exception=True
         )
 
+        self.perform_create(serializer)
+
         return Response(
-            BoardListSerializer(board).data,
-            status=201
+            BoardListSerializer(
+                serializer.instance
+            ).data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -98,7 +110,7 @@ class BoardDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def update(self, request, *args, **kwargs):
 
-        partial = kwargs.pop("partial", False)
+        partial = kwargs.pop("partial", request.method == "PATCH")
 
         instance = self.get_object()
 
@@ -129,9 +141,7 @@ class BoardDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class EmailCheckView(APIView):
 
-    permission_classes = [
-        IsAuthenticated,
-    ]
+    permission_classes = [IsAuthenticated,]
 
     def get(self, request):
         email = request.query_params.get(
@@ -188,15 +198,24 @@ class EmailCheckView(APIView):
 
 class TaskCreateView(generics.CreateAPIView):
     serializer_class = TaskCreateSerializer
-    permission_classes = [IsAuthenticated, IsBoardMemberOrOwner]
+    permission_classes = [IsAuthenticated]
 
-    def perform_create(self, serializer):
-        board = serializer.validated_data["board"]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(
+            data=request.data
+        )
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-        if not board.members.filter(id=self.request.user.id).exists():
-            raise PermissionDenied("Not a board member")
+        task = serializer.save(
+            creator=request.user
+        )
 
-        serializer.save()
+        return Response(
+            TaskSerializer(task).data,
+            status=status.HTTP_201_CREATED
+        )
 
 
 class AssignedToMeView(generics.ListAPIView):
@@ -225,6 +244,13 @@ class TaskDetailView(
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
+    def get_serializer_class(self):
+
+        if self.request.method == "PATCH":
+            return TaskUpdateSerializer
+
+        return TaskSerializer
+
     def get_permissions(self):
         if self.request.method == "DELETE":
             return [
@@ -236,3 +262,87 @@ class TaskDetailView(
             IsAuthenticated(),
             IsTaskBoardMember(),
         ]
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop(
+            "partial",
+            False
+        )
+
+        instance = self.get_object()
+
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=partial,
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        self.perform_update(serializer)
+
+        return Response(
+            TaskSerializer(
+                serializer.instance
+            ).data
+        )
+
+    def get_object(self):
+        obj = super().get_object()
+
+        self.check_object_permissions(
+            self.request,
+            obj
+        )
+
+        return obj
+
+
+class CommentListCreateView(
+    generics.ListCreateAPIView
+):
+    permission_classes = [IsAuthenticated]
+
+    def get_task(self):
+        return get_object_or_404(
+            Task,
+            pk=self.kwargs["task_id"]
+        )
+
+    def get_queryset(self):
+        task = self.get_task()
+
+        if not task.board.members.filter(
+            id=self.request.user.id
+        ).exists():
+            raise PermissionDenied()
+
+        return task.comments.all()
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return CommentCreateSerializer
+        return CommentSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["task"] = self.get_task()
+        return context
+
+
+class CommentDeleteView(
+    generics.DestroyAPIView
+):
+    queryset = Comment.objects.all()
+
+    permission_classes = [
+        IsAuthenticated,
+        IsCommentAuthor,
+    ]
+
+    def get_queryset(self):
+        return Comment.objects.filter(
+            task_id=self.kwargs["task_id"]
+        )

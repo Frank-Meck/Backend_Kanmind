@@ -1,6 +1,12 @@
 from rest_framework.permissions import BasePermission
 
 
+class IsBoardOwner(BasePermission):
+
+    def has_object_permission(self, request, view, obj):
+        return obj.owner == request.user
+
+
 class IsBoardMemberOrOwner(BasePermission):
 
     def has_object_permission(self, request, view, obj):
@@ -8,12 +14,6 @@ class IsBoardMemberOrOwner(BasePermission):
             obj.owner == request.user
             or obj.members.filter(id=request.user.id).exists()
         )
-
-
-class IsBoardOwner(BasePermission):
-
-    def has_object_permission(self, request, view, obj):
-        return obj.owner == request.user
 
 
 class IsTaskBoardMember(BasePermission):
@@ -43,3 +43,14 @@ class IsTaskCreatorOrBoardOwner(
             obj.creator == request.user
             or obj.board.owner == request.user
         )
+
+
+class IsCommentAuthor(BasePermission):
+
+    def has_object_permission(
+        self,
+        request,
+        view,
+        obj
+    ):
+        return obj.author == request.user

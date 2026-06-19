@@ -1,11 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 
 from .serializers import RegisterSerializer
-from auth_app.models import User
+from auth_app.api.serializers import LoginSerializer
 
 
 class RegisterView(APIView):
@@ -21,65 +20,57 @@ class RegisterView(APIView):
         Register a new user.
 
         Returns:
-            Response: Token and user data on success,
-            or validation errors on failure.
+            Response: Token and user data on success.
         """
-        serializer = RegisterSerializer(data=request.data)
+        serializer = RegisterSerializer(
+            data=request.data
+        )
 
-        if serializer.is_valid():
-            user = serializer.save()
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-            token, _ = Token.objects.get_or_create(user=user)
+        user = serializer.save()
 
-            return Response({
+        token, _ = Token.objects.get_or_create(
+            user=user
+        )
+
+        return Response(
+            {
                 "token": token.key,
                 "fullname": user.fullname,
                 "email": user.email,
-                "user_id": user.id
-            }, status=status.HTTP_201_CREATED)
-
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
+                "user_id": user.id,
+            },
+            status=status.HTTP_201_CREATED,
         )
 
-
 class LoginView(APIView):
-    """
-    Authenticates a user and returns a token.
-    """
 
     def post(self, request):
-        """
-        Validate login credentials and return token.
+        serializer = LoginSerializer(
+            data=request.data
+        )
 
-        Returns:
-            Response: Auth token + user data or error message
-        """
+        serializer.is_valid(
+            raise_exception=True
+        )
 
-        email = request.data.get("email")
-        password = request.data.get("password")
+        user = serializer.validated_data[
+            "user"
+        ]
 
-        # ✅ unified validation (PM-friendly)
-        if not email or not password:
-            return Response(
-                {"error": "Email and password are required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        token, _ = Token.objects.get_or_create(
+            user=user
+        )
 
-        user = authenticate(username=email, password=password)
-
-        if not user:
-            return Response(
-                {"error": "Invalid credentials"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        token, _ = Token.objects.get_or_create(user=user)
-
-        return Response({
-            "token": token.key,
-            "fullname": user.fullname,
-            "email": user.email,
-            "user_id": user.id
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "token": token.key,
+                "fullname": user.fullname,
+                "email": user.email,
+                "user_id": user.id,
+            },
+            status=status.HTTP_200_OK,
+        )
