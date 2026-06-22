@@ -93,26 +93,43 @@ class BoardDetailSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        members = validated_data.pop("members", [])
-
-        request = self.context["request"]
-
-        board = Board.objects.create(
-            owner=request.user,
-            **validated_data
+        members = validated_data.pop(
+            "members",
+            []
         )
 
-        # Owner immer Mitglied
-        board.members.add(request.user)
+        board = self.create_board(
+            validated_data
+        )
 
-        # weitere Mitglieder
-        if members:
-            board.members.add(*members)
+        self.add_members(
+            board,
+            members
+        )
 
         return board
 
+    def create_board(self, validated_data):
+        return Board.objects.create(
+            owner=self.context["request"].user,
+            **validated_data
+        )
+
+    def add_members(self, board, members):
+        board.members.add(
+            board.owner
+        )
+
+        if members:
+            board.members.add(
+                *members
+            )
+
     def update(self, instance, validated_data):
-        members = validated_data.pop("members", None)
+        members = validated_data.pop(
+            "members",
+            None
+        )
 
         instance.title = validated_data.get(
             "title",
@@ -122,14 +139,26 @@ class BoardDetailSerializer(serializers.ModelSerializer):
         instance.save()
 
         if members is not None:
-
-            # Owner darf niemals entfernt werden
-            if instance.owner not in members:
-                members.append(instance.owner)
-
-            instance.members.set(members)
+            self.update_members(
+                instance,
+                members
+            )
 
         return instance
+
+    def update_members(
+        self,
+        instance,
+        members
+    ):
+        if instance.owner not in members:
+            members.append(
+                instance.owner
+            )
+
+        instance.members.set(
+            members
+        )
 
 
 class BoardRetrieveSerializer(serializers.ModelSerializer):
@@ -196,6 +225,7 @@ class EmailCheckSerializer(
 
 
 class TaskCreateSerializer(serializers.ModelSerializer):
+
     assignee_id = serializers.IntegerField(
         required=False,
         allow_null=True
@@ -233,64 +263,68 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         board = attrs["board"]
-        if not board:
-            return attrs
 
-        assignee_id = attrs.get("assignee_id")
-        reviewer_id = attrs.get("reviewer_id")
+        self.validate_user(
+            board,
+            attrs.get("assignee_id"),
+            "assignee_id"
+        )
 
-        if assignee_id is not None:
-            if not board.members.filter(
-                id=assignee_id
-            ).exists():
-                raise serializers.ValidationError(
-                    {
-                        "assignee_id":
-                        "User must be board member."
-                    }
-                )
-
-        if reviewer_id is not None:
-            if not board.members.filter(
-                id=reviewer_id
-            ).exists():
-                raise serializers.ValidationError(
-                    {
-                        "reviewer_id":
-                        "User must be board member."
-                    }
-                )
+        self.validate_user(
+            board,
+            attrs.get("reviewer_id"),
+            "reviewer_id"
+        )
 
         return attrs
 
+    def validate_user(
+        self,
+        board,
+        user_id,
+        field
+    ):
+        if user_id is None:
+            return
+
+        if not board.members.filter(
+            id=user_id
+        ).exists():
+
+            raise serializers.ValidationError(
+                {
+                    field:
+                    "User must be board member."
+                }
+            )
+
     def create(self, validated_data):
-        assignee_id = validated_data.pop(
-            "assignee_id",
-            None,
+        assignee = self.get_user(
+            validated_data.pop(
+                "assignee_id",
+                None
+            )
         )
 
-        reviewer_id = validated_data.pop(
-            "reviewer_id",
-            None,
+        reviewer = self.get_user(
+            validated_data.pop(
+                "reviewer_id",
+                None
+            )
         )
-
-        assignee = None
-        reviewer = None
-
-        if assignee_id is not None:
-            assignee = User.objects.get(
-                id=assignee_id
-            )
-
-        if reviewer_id is not None:
-            reviewer = User.objects.get(
-                id=reviewer_id
-            )
 
         return Task.objects.create(
             assignee=assignee,
             reviewer=reviewer,
-            **validated_data,
+            **validated_data
+        )
+
+    def get_user(self, user_id):
+        if user_id is None:
+            return None
+
+        return User.objects.get(
+            id=user_id
         )
 
 
@@ -352,6 +386,7 @@ class TaskSerializer(serializers.ModelSerializer):
 
 
 class TaskUpdateSerializer(serializers.ModelSerializer):
+
     assignee_id = serializers.IntegerField(
         required=False,
         allow_null=True,
@@ -377,72 +412,75 @@ class TaskUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         board = self.instance.board
 
-        assignee_id = attrs.get("assignee_id")
-        reviewer_id = attrs.get("reviewer_id")
+        self.validate_user(
+            board,
+            attrs.get("assignee_id"),
+            "assignee_id"
+        )
 
-        if assignee_id is not None:
-            if not board.members.filter(
-                id=assignee_id
-            ).exists():
-                raise serializers.ValidationError(
-                    {
-                        "assignee_id":
-                        "User must be board member."
-                    }
-                )
-
-        if reviewer_id is not None:
-            if not board.members.filter(
-                id=reviewer_id
-            ).exists():
-                raise serializers.ValidationError(
-                    {
-                        "reviewer_id":
-                        "User must be board member."
-                    }
-                )
+        self.validate_user(
+            board,
+            attrs.get("reviewer_id"),
+            "reviewer_id"
+        )
 
         return attrs
 
-    def update(self, instance, validated_data):
-        has_assignee = (
-            "assignee_id" in validated_data
-        )
+    def validate_user(
+        self,
+        board,
+        user_id,
+        field
+    ):
+        if user_id is None:
+            return
 
-        has_reviewer = (
-            "reviewer_id" in validated_data
-        )
+        if not board.members.filter(
+            id=user_id
+        ).exists():
 
-        assignee_id = validated_data.pop(
-            "assignee_id",
-            None,
-        )
+            raise serializers.ValidationError(
+                {
+                    field:
+                    "User must be board member."
+                }
+            )
 
-        reviewer_id = validated_data.pop(
-            "reviewer_id",
-            None,
+    def update(
+        self,
+        instance,
+        validated_data
+    ):
+        self.update_users(
+            instance,
+            validated_data
         )
 
         for attr, value in validated_data.items():
             setattr(
                 instance,
                 attr,
-                value,
-            )
-
-        if has_assignee:
-            instance.assignee_id = (
-                assignee_id
-            )
-
-        if has_reviewer:
-            instance.reviewer_id = (
-                reviewer_id
+                value
             )
 
         instance.save()
 
         return instance
+
+    def update_users(
+        self,
+        instance,
+        data
+    ):
+        if "assignee_id" in data:
+            instance.assignee_id = data.pop(
+                "assignee_id"
+            )
+
+        if "reviewer_id" in data:
+            instance.reviewer_id = data.pop(
+                "reviewer_id"
+            )
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -477,12 +515,10 @@ class CommentCreateSerializer(serializers.ModelSerializer):
 
         return value
 
-    def create(self, validated_data):
-        task = self.context["task"]
-        request = self.context["request"]
 
-        return Comment.objects.create(
-            task=task,
-            author=request.user,
-            **validated_data
-        )
+def create(self, validated_data):
+    return Comment.objects.create(
+        task=self.context["task"],
+        author=self.context["request"].user,
+        **validated_data
+    )
