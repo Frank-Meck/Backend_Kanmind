@@ -233,6 +233,8 @@ class TaskCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         board = attrs["board"]
+        if not board:
+            return attrs
 
         assignee_id = attrs.get("assignee_id")
         reviewer_id = attrs.get("reviewer_id")
@@ -290,6 +292,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             reviewer=reviewer,
             **validated_data,
         )
+
 
 class TaskWriteSerializer(
     serializers.ModelSerializer

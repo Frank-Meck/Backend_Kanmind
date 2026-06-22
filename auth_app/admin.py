@@ -11,6 +11,3 @@ class UserAdmin(admin.ModelAdmin):
         "fullname",
         "is_staff",
     )
-
-    def fullname(self, obj):
-        return f"{obj.first_name} {obj.last_name}"
