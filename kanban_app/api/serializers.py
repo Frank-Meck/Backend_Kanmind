@@ -57,11 +57,11 @@ class BoardListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "owner_id",
             "member_count",
             "ticket_count",
             "tasks_to_do_count",
             "tasks_high_prio_count",
+            "owner_id",
         ]
 
     def get_member_count(self, obj):
