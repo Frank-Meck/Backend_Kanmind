@@ -397,11 +397,14 @@ class CommentListCreateView(
     ]
 
     def get_task(self):
-
-        return get_object_or_404(
+        task = get_object_or_404(
             Task,
             pk=self.kwargs["task_id"]
         )
+
+        self.check_member(task)
+
+        return task
 
     def get_queryset(self):
 
@@ -475,4 +478,36 @@ class CommentDeleteView(
 
         return Comment.objects.filter(
             task_id=self.kwargs["task_id"]
+        )
+
+
+    def destroy(
+        self,
+        request,
+        *args,
+        **kwargs
+    ):
+
+        task_id = self.kwargs.get("task_id")
+        comment_id = self.kwargs.get("pk")
+
+
+        # ungültige IDs abfangen
+        if (
+            not str(task_id).isdigit()
+            or not str(comment_id).isdigit()
+        ):
+            return Response(
+                {
+                    "detail":
+                    "Invalid task or comment id."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+        return super().destroy(
+            request,
+            *args,
+            **kwargs
         )
