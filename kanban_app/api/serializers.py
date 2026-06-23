@@ -515,10 +515,9 @@ class CommentCreateSerializer(serializers.ModelSerializer):
 
         return value
 
-
-def create(self, validated_data):
-    return Comment.objects.create(
-        task=self.context["task"],
-        author=self.context["request"].user,
-        **validated_data
-    )
+    def create(self, validated_data):
+        return Comment.objects.create(
+            task=self.context["task"],
+            author=self.context["request"].user,
+            **validated_data
+        )
