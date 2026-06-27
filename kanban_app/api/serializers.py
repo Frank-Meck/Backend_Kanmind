@@ -430,30 +430,6 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         )
 
 
-class TaskWriteSerializer(serializers.ModelSerializer):
-    """
-    Serializer for updating task data. Used for changing task fields such 
-    as title, description, status, priority and assignments.
-    """
-    assignee_id = serializers.IntegerField(required=False, allow_null=True,)
-    reviewer_id = serializers.IntegerField(required=False, allow_null=True,)
-
-    class Meta:
-        """
-        Meta configuration for TaskWriteSerializer. Defines writable task fields.
-        """
-        model = Task
-        fields = [
-            "title",
-            "description",
-            "status",
-            "priority",
-            "assignee_id",
-            "reviewer_id",
-            "due_date",
-        ]
-
-
 class TaskSerializer(serializers.ModelSerializer):
     """
     Serializer for detailed task responses.Provides task information including 
