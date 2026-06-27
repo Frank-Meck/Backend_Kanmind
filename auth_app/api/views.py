@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
 
 from auth_app.api.serializers import LoginSerializer
 from .serializers import RegisterSerializer
@@ -39,6 +40,8 @@ class RegisterView(APIView):
     After successful registration, an authentication token
     and user data are returned.
     """
+    permission_classes = [AllowAny]
+
     def post(self, request):
         """
         Register a new user.

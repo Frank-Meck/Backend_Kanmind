@@ -15,7 +15,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.views import APIView, PermissionDenied
+from rest_framework.views import APIView
+from rest_framework.exceptions import PermissionDenied
 
 from kanban_app.models import (
     Board,
@@ -51,7 +52,6 @@ class BoardListView(generics.ListCreateAPIView):
     GET: Returns all boards where the current user is a member.
     POST: Creates a new board with the current user as owner.
     """
-    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         """
@@ -210,9 +210,6 @@ class EmailCheckView(APIView):
     API view for checking existing email addresses. Used during board member
     selection to verify whether a user exists.
     """
-    permission_classes = [
-        IsAuthenticated
-    ]
 
     def get(self, request):
         """
@@ -274,7 +271,6 @@ class TaskCreateView(generics.CreateAPIView):
     assigns the current authenticated user as creator.
     """
     serializer_class = (TaskCreateSerializer)
-    permission_classes = [IsAuthenticated]
 
     def create(
         self,
@@ -309,7 +305,6 @@ class AssignedToMeView(generics.ListAPIView):
     is assigned as responsible person.
     """
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """
@@ -320,13 +315,13 @@ class AssignedToMeView(generics.ListAPIView):
             assignee=self.request.user
         )
 
+
 class ReviewingView(generics.ListAPIView):
     """
     API view for reviewing tasks. Returns all tasks where the current user
     is assigned as reviewer.
     """
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """
@@ -436,7 +431,6 @@ class CommentListCreateView(generics.ListCreateAPIView):
     API view for listing and creating comments. Users can only access comments 
     of tasks belonging to boards they are members of.
     """
-    permission_classes = [IsAuthenticated]
 
     def get_task(self):
         """
