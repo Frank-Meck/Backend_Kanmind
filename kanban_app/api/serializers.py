@@ -9,6 +9,7 @@ into API responses and validating incoming API data.
 """
 
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound, PermissionDenied
 
 from auth_app.models import User
 from kanban_app.models import (
@@ -16,6 +17,7 @@ from kanban_app.models import (
     Task,
     Comment,
 )
+
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -312,6 +314,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
     """
     assignee_id = serializers.IntegerField(required=False, allow_null=True)
     reviewer_id = serializers.IntegerField(required=False, allow_null=True)
+    board = serializers.PrimaryKeyRelatedField(queryset=Board.objects.all())
 
     class Meta:
         """
@@ -335,17 +338,36 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         Validate that the current user is a board member.
         Args: board: Board instance.
         Returns: Board: Validated board object.
-        Raises: ValidationError: If user is not a board member.
+        Raises: PermissionDenied: If user is not a board member.
         """
         request = self.context["request"]
+
+        if not Board.objects.filter(
+            id=board.id
+        ).exists():
+            raise NotFound(
+                "Board does not exist."
+            )
 
         if not board.members.filter(
             id=request.user.id
         ).exists():
-            raise serializers.ValidationError(
+            raise PermissionDenied(
                 "You are not a member of this board."
             )
+
         return board
+
+    def to_internal_value(self, data):
+        if "board" in data:
+            if not Board.objects.filter(
+                id=data["board"]
+            ).exists():
+                raise NotFound(
+                    "Board does not exist."
+                )
+
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         """
