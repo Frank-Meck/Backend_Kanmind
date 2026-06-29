@@ -64,6 +64,9 @@ class LoginView(APIView):
     Authenticates users using email and password.
     Returns an authentication token on success.
     """
+
+    permission_classes = [AllowAny]
+    
     def post(self, request):
         """
         Authenticate a user.
